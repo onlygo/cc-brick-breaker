@@ -183,7 +183,11 @@ document.addEventListener("keydown", (e) => {
   }
 });
 document.addEventListener("keyup", (e) => (keys[e.key] = false));
+let mouseActive = false;
+canvas.addEventListener("mouseenter", () => (mouseActive = true));
+canvas.addEventListener("mouseleave", () => (mouseActive = false));
 canvas.addEventListener("mousemove", (e) => {
+  mouseActive = true;
   const rect = canvas.getBoundingClientRect();
   mouseX = e.clientX - rect.left;
 });
@@ -197,9 +201,10 @@ function updatePaddle() {
   if (keys["ArrowLeft"] || keys["a"]) paddle.x -= paddle.speed;
   if (keys["ArrowRight"] || keys["d"]) paddle.x += paddle.speed;
 
-  // Mouse control
-  const target = mouseX - paddle.width / 2;
-  paddle.x += (target - paddle.x) * 0.15;
+  // Mouse control — only when mouse is on the canvas
+  if (mouseActive) {
+    paddle.x = mouseX - paddle.width / 2;
+  }
 
   // Clamp to canvas
   paddle.x = Math.max(0, Math.min(canvas.width - paddle.width, paddle.x));
