@@ -22,6 +22,37 @@ const ball = {
   color: "#f5f5f5",
 };
 
+// --- Bricks ---
+const brickConfig = {
+  rows: 5,
+  cols: 10,
+  width: 68,
+  height: 20,
+  padding: 6,
+  offsetTop: 50,
+  offsetLeft: 35,
+  colors: ["#e94560", "#ff6b6b", "#ffd93d", "#6bcb77", "#4d96ff"],
+};
+
+let bricks = [];
+
+function createBricks() {
+  bricks = [];
+  for (let r = 0; r < brickConfig.rows; r++) {
+    bricks[r] = [];
+    for (let c = 0; c < brickConfig.cols; c++) {
+      bricks[r][c] = {
+        x: brickConfig.offsetLeft + c * (brickConfig.width + brickConfig.padding),
+        y: brickConfig.offsetTop + r * (brickConfig.height + brickConfig.padding),
+        alive: true,
+        color: brickConfig.colors[r],
+      };
+    }
+  }
+}
+
+createBricks();
+
 // --- Input ---
 const keys = {};
 let mouseX = paddle.x + paddle.width / 2;
@@ -78,6 +109,23 @@ function updateBall() {
     const hitPos = (ball.x - paddle.x) / paddle.width; // 0..1
     ball.dx = 6 * (hitPos - 0.5); // range -3..3
   }
+
+  // Brick collisions
+  for (let r = 0; r < brickConfig.rows; r++) {
+    for (let c = 0; c < brickConfig.cols; c++) {
+      const b = bricks[r][c];
+      if (!b.alive) continue;
+      if (
+        ball.x + ball.radius > b.x &&
+        ball.x - ball.radius < b.x + brickConfig.width &&
+        ball.y + ball.radius > b.y &&
+        ball.y - ball.radius < b.y + brickConfig.height
+      ) {
+        b.alive = false;
+        ball.dy = -ball.dy;
+      }
+    }
+  }
 }
 
 function drawPaddle() {
@@ -85,6 +133,19 @@ function drawPaddle() {
   ctx.beginPath();
   ctx.roundRect(paddle.x, paddle.y, paddle.width, paddle.height, 6);
   ctx.fill();
+}
+
+function drawBricks() {
+  for (let r = 0; r < brickConfig.rows; r++) {
+    for (let c = 0; c < brickConfig.cols; c++) {
+      const b = bricks[r][c];
+      if (!b.alive) continue;
+      ctx.fillStyle = b.color;
+      ctx.beginPath();
+      ctx.roundRect(b.x, b.y, brickConfig.width, brickConfig.height, 4);
+      ctx.fill();
+    }
+  }
 }
 
 function drawBall() {
@@ -101,6 +162,7 @@ function draw() {
   updatePaddle();
   updateBall();
 
+  drawBricks();
   drawPaddle();
   drawBall();
 
