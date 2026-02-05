@@ -85,6 +85,64 @@ function allBricksDestroyed() {
   return true;
 }
 
+// --- Particles ---
+const particles = [];
+
+function spawnParticles(x, y, color) {
+  for (let i = 0; i < 8; i++) {
+    particles.push({
+      x,
+      y,
+      dx: (Math.random() - 0.5) * 6,
+      dy: (Math.random() - 0.5) * 6,
+      radius: Math.random() * 3 + 1,
+      color,
+      life: 1,
+    });
+  }
+}
+
+function updateParticles() {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.dx;
+    p.y += p.dy;
+    p.life -= 0.03;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+}
+
+function drawParticles() {
+  for (const p of particles) {
+    ctx.globalAlpha = p.life;
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+// --- Ball Trail ---
+const trail = [];
+
+function updateTrail() {
+  trail.push({ x: ball.x, y: ball.y });
+  if (trail.length > 10) trail.shift();
+}
+
+function drawTrail() {
+  for (let i = 0; i < trail.length; i++) {
+    const alpha = (i / trail.length) * 0.3;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = ball.color;
+    ctx.beginPath();
+    ctx.arc(trail[i].x, trail[i].y, ball.radius * (i / trail.length), 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
 // --- Input ---
 const keys = {};
 let mouseX = paddle.x + paddle.width / 2;
@@ -170,6 +228,7 @@ function updateBall() {
         b.alive = false;
         ball.dy = -ball.dy;
         score += b.points;
+        spawnParticles(b.x + brickConfig.width / 2, b.y + brickConfig.height / 2, b.color);
         if (allBricksDestroyed()) {
           gameState = "win";
         }
@@ -181,10 +240,13 @@ function updateBall() {
 
 // --- Drawing ---
 function drawPaddle() {
+  ctx.shadowColor = paddle.color;
+  ctx.shadowBlur = 15;
   ctx.fillStyle = paddle.color;
   ctx.beginPath();
   ctx.roundRect(paddle.x, paddle.y, paddle.width, paddle.height, 6);
   ctx.fill();
+  ctx.shadowBlur = 0;
 }
 
 function drawBricks() {
@@ -192,12 +254,30 @@ function drawBricks() {
     for (let c = 0; c < brickConfig.cols; c++) {
       const b = bricks[r][c];
       if (!b.alive) continue;
-      ctx.fillStyle = b.color;
+      const grad = ctx.createLinearGradient(b.x, b.y, b.x, b.y + brickConfig.height);
+      grad.addColorStop(0, b.color);
+      grad.addColorStop(1, shadeColor(b.color, -30));
+      ctx.fillStyle = grad;
       ctx.beginPath();
       ctx.roundRect(b.x, b.y, brickConfig.width, brickConfig.height, 4);
       ctx.fill();
+      // Top highlight
+      ctx.fillStyle = "rgba(255,255,255,0.15)";
+      ctx.beginPath();
+      ctx.roundRect(b.x + 2, b.y + 2, brickConfig.width - 4, brickConfig.height / 2 - 2, 2);
+      ctx.fill();
     }
   }
+}
+
+function shadeColor(hex, amt) {
+  let r = parseInt(hex.slice(1, 3), 16) + amt;
+  let g = parseInt(hex.slice(3, 5), 16) + amt;
+  let b = parseInt(hex.slice(5, 7), 16) + amt;
+  r = Math.max(0, Math.min(255, r));
+  g = Math.max(0, Math.min(255, g));
+  b = Math.max(0, Math.min(255, b));
+  return `rgb(${r},${g},${b})`;
 }
 
 function drawBall() {
@@ -232,23 +312,31 @@ function drawOverlay(title, subtitle) {
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+  updateParticles();
+
   if (gameState === "playing") {
     updatePaddle();
     updateBall();
+    updateTrail();
     drawBricks();
+    drawTrail();
     drawPaddle();
     drawBall();
+    drawParticles();
     drawHUD();
   } else if (gameState === "start") {
     drawBricks();
     drawPaddle();
     drawBall();
+    drawParticles();
     drawOverlay("BRICK BREAKER", "Click or press Space to start");
   } else if (gameState === "gameover") {
     drawBricks();
     drawPaddle();
+    drawParticles();
     drawOverlay("GAME OVER", `Final Score: ${score} — Click or press Space to retry`);
   } else if (gameState === "win") {
+    drawParticles();
     drawOverlay("YOU WIN!", `Score: ${score} — Click or press Space to play again`);
   }
 
