@@ -1,3 +1,20 @@
+// roundRect polyfill for older browsers
+if (!CanvasRenderingContext2D.prototype.roundRect) {
+  CanvasRenderingContext2D.prototype.roundRect = function (x, y, w, h, radii) {
+    const r = typeof radii === "number" ? radii : Array.isArray(radii) ? radii[0] : 0;
+    this.moveTo(x + r, y);
+    this.lineTo(x + w - r, y);
+    this.arcTo(x + w, y, x + w, y + r, r);
+    this.lineTo(x + w, y + h - r);
+    this.arcTo(x + w, y + h, x + w - r, y + h, r);
+    this.lineTo(x + r, y + h);
+    this.arcTo(x, y + h, x, y + h - r, r);
+    this.lineTo(x, y + r);
+    this.arcTo(x, y, x + r, y, r);
+    this.closePath();
+  };
+}
+
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 
@@ -26,6 +43,16 @@ const ball = {
   dy: -4,
   color: "#f5f5f5",
 };
+
+const BALL_SPEED = Math.sqrt(ball.dx * ball.dx + ball.dy * ball.dy);
+
+function normalizeBallSpeed() {
+  const currentSpeed = Math.sqrt(ball.dx * ball.dx + ball.dy * ball.dy);
+  if (currentSpeed === 0) return;
+  const scale = BALL_SPEED / currentSpeed;
+  ball.dx *= scale;
+  ball.dy *= scale;
+}
 
 // --- Bricks ---
 const brickConfig = {
@@ -182,13 +209,18 @@ function updateBall() {
   ball.x += ball.dx;
   ball.y += ball.dy;
 
-  // Wall collisions (left/right)
-  if (ball.x - ball.radius <= 0 || ball.x + ball.radius >= canvas.width) {
-    ball.dx = -ball.dx;
+  // Wall collisions (left/right) with position clamping
+  if (ball.x - ball.radius <= 0) {
+    ball.dx = Math.abs(ball.dx);
+    ball.x = ball.radius;
+  } else if (ball.x + ball.radius >= canvas.width) {
+    ball.dx = -Math.abs(ball.dx);
+    ball.x = canvas.width - ball.radius;
   }
   // Ceiling
   if (ball.y - ball.radius <= 0) {
-    ball.dy = -ball.dy;
+    ball.dy = Math.abs(ball.dy);
+    ball.y = ball.radius;
   }
   // Floor - lose a life
   if (ball.y + ball.radius >= canvas.height) {
@@ -209,9 +241,11 @@ function updateBall() {
     ball.x >= paddle.x &&
     ball.x <= paddle.x + paddle.width
   ) {
-    ball.dy = -ball.dy;
+    ball.y = paddle.y - ball.radius; // Prevent sticking inside paddle
     const hitPos = (ball.x - paddle.x) / paddle.width;
     ball.dx = 6 * (hitPos - 0.5);
+    ball.dy = -Math.abs(ball.dy);
+    normalizeBallSpeed();
   }
 
   // Brick collisions
@@ -226,7 +260,18 @@ function updateBall() {
         ball.y - ball.radius < b.y + brickConfig.height
       ) {
         b.alive = false;
-        ball.dy = -ball.dy;
+        // Determine which face was hit
+        const overlapLeft = ball.x + ball.radius - b.x;
+        const overlapRight = b.x + brickConfig.width - (ball.x - ball.radius);
+        const overlapTop = ball.y + ball.radius - b.y;
+        const overlapBottom = b.y + brickConfig.height - (ball.y - ball.radius);
+        const minOverlapX = Math.min(overlapLeft, overlapRight);
+        const minOverlapY = Math.min(overlapTop, overlapBottom);
+        if (minOverlapX < minOverlapY) {
+          ball.dx = -ball.dx;
+        } else {
+          ball.dy = -ball.dy;
+        }
         score += b.points;
         spawnParticles(b.x + brickConfig.width / 2, b.y + brickConfig.height / 2, b.color);
         if (allBricksDestroyed()) {
