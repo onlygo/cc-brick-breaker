@@ -24,8 +24,8 @@ if (!CanvasRenderingContext2D.prototype.roundRect) {
 
   const CONFIG = {
     canvas: { width: 800, height: 600 },
-    paddle: { width: 120, height: 14, speed: 7, bottomOffset: 30, color: "#e94560" },
-    ball: { radius: 8, initialDx: 4, initialDy: -4, color: "#f5f5f5", maxDeflection: 6 },
+    paddle: { width: 120, height: 14, speed: 7, bottomOffset: 30, color: "#00d9ff" },
+    ball: { radius: 8, initialDx: 4, initialDy: -4, color: "#ffffff", maxDeflection: 6 },
     bricks: {
       rows: 5,
       cols: 10,
@@ -34,7 +34,7 @@ if (!CanvasRenderingContext2D.prototype.roundRect) {
       padding: 6,
       offsetTop: 50,
       offsetLeft: 35,
-      colors: ["#e94560", "#ff6b6b", "#ffd93d", "#6bcb77", "#4d96ff"],
+      colors: ["#ff006e", "#fb5607", "#ffbe0b", "#8338ec", "#3a86ff"],
       points: [50, 40, 30, 20, 10],
     },
     particles: { count: 8, speed: 6, decay: 0.03, maxRadius: 3, minRadius: 1 },
@@ -372,7 +372,7 @@ if (!CanvasRenderingContext2D.prototype.roundRect) {
   // =========================================================================
 
   function drawHUD() {
-    ctx.fillStyle = "#f5f5f5";
+    ctx.fillStyle = "#ffffff";
     ctx.font = `16px ${CONFIG.font}`;
     ctx.textAlign = "left";
     ctx.fillText(`Score: ${game.score}`, 15, 25);
@@ -383,11 +383,11 @@ if (!CanvasRenderingContext2D.prototype.roundRect) {
   function drawOverlay(title, subtitle) {
     ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
     ctx.fillRect(0, 0, CONFIG.canvas.width, CONFIG.canvas.height);
-    ctx.fillStyle = "#e94560";
+    ctx.fillStyle = "#00d9ff";
     ctx.font = `bold 48px ${CONFIG.font}`;
     ctx.textAlign = "center";
     ctx.fillText(title, CONFIG.canvas.width / 2, CONFIG.canvas.height / 2 - 20);
-    ctx.fillStyle = "#f5f5f5";
+    ctx.fillStyle = "#ffffff";
     ctx.font = `18px ${CONFIG.font}`;
     ctx.fillText(subtitle, CONFIG.canvas.width / 2, CONFIG.canvas.height / 2 + 25);
   }
