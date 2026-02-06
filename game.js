@@ -34,7 +34,7 @@ if (!CanvasRenderingContext2D.prototype.roundRect) {
       padding: 6,
       offsetTop: 50,
       offsetLeft: 35,
-      colors: ["#ff006e", "#fb5607", "#ffbe0b", "#8338ec", "#3a86ff"],
+      colors: ["#ff006e", "#fb5607", "#ffaa00", "#8338ec", "#3a86ff"],
       points: [50, 40, 30, 20, 10],
     },
     particles: { count: 8, speed: 6, decay: 0.03, maxRadius: 3, minRadius: 1 },
