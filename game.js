@@ -15,382 +15,474 @@ if (!CanvasRenderingContext2D.prototype.roundRect) {
   };
 }
 
-const canvas = document.getElementById("gameCanvas");
-const ctx = canvas.getContext("2d");
+(function () {
+  "use strict";
 
-// --- Game State ---
-let score = 0;
-let lives = 3;
-let gameState = "start"; // "start", "playing", "gameover", "win"
+  // =========================================================================
+  // Configuration
+  // =========================================================================
 
-// --- Paddle ---
-const paddle = {
-  width: 120,
-  height: 14,
-  x: 0,
-  y: canvas.height - 30,
-  speed: 7,
-  color: "#e94560",
-};
-paddle.x = (canvas.width - paddle.width) / 2;
+  const CONFIG = {
+    canvas: { width: 800, height: 600 },
+    paddle: { width: 120, height: 14, speed: 7, bottomOffset: 30, color: "#e94560" },
+    ball: { radius: 8, initialDx: 4, initialDy: -4, color: "#f5f5f5", maxDeflection: 6 },
+    bricks: {
+      rows: 5,
+      cols: 10,
+      width: 68,
+      height: 20,
+      padding: 6,
+      offsetTop: 50,
+      offsetLeft: 35,
+      colors: ["#e94560", "#ff6b6b", "#ffd93d", "#6bcb77", "#4d96ff"],
+      points: [50, 40, 30, 20, 10],
+    },
+    particles: { count: 8, speed: 6, decay: 0.03, maxRadius: 3, minRadius: 1 },
+    trail: { maxLength: 10, maxAlpha: 0.3 },
+    lives: 3,
+    font: "'Segoe UI', sans-serif",
+  };
 
-// --- Ball ---
-const ball = {
-  x: canvas.width / 2,
-  y: paddle.y - 12,
-  radius: 8,
-  dx: 4,
-  dy: -4,
-  color: "#f5f5f5",
-};
+  const BALL_SPEED = Math.sqrt(
+    CONFIG.ball.initialDx ** 2 + CONFIG.ball.initialDy ** 2,
+  );
 
-const BALL_SPEED = Math.sqrt(ball.dx * ball.dx + ball.dy * ball.dy);
+  // =========================================================================
+  // Canvas setup
+  // =========================================================================
 
-function normalizeBallSpeed() {
-  const currentSpeed = Math.sqrt(ball.dx * ball.dx + ball.dy * ball.dy);
-  if (currentSpeed === 0) return;
-  const scale = BALL_SPEED / currentSpeed;
-  ball.dx *= scale;
-  ball.dy *= scale;
-}
+  const canvas = document.getElementById("gameCanvas");
+  const ctx = canvas.getContext("2d");
 
-// --- Bricks ---
-const brickConfig = {
-  rows: 5,
-  cols: 10,
-  width: 68,
-  height: 20,
-  padding: 6,
-  offsetTop: 50,
-  offsetLeft: 35,
-  colors: ["#e94560", "#ff6b6b", "#ffd93d", "#6bcb77", "#4d96ff"],
-  points: [50, 40, 30, 20, 10],
-};
+  // =========================================================================
+  // Utility
+  // =========================================================================
 
-let bricks = [];
-
-function createBricks() {
-  bricks = [];
-  for (let r = 0; r < brickConfig.rows; r++) {
-    bricks[r] = [];
-    for (let c = 0; c < brickConfig.cols; c++) {
-      bricks[r][c] = {
-        x: brickConfig.offsetLeft + c * (brickConfig.width + brickConfig.padding),
-        y: brickConfig.offsetTop + r * (brickConfig.height + brickConfig.padding),
-        alive: true,
-        color: brickConfig.colors[r],
-        points: brickConfig.points[r],
-      };
-    }
-  }
-}
-
-createBricks();
-
-function resetBall() {
-  ball.x = canvas.width / 2;
-  ball.y = paddle.y - 12;
-  ball.dx = 4 * (Math.random() > 0.5 ? 1 : -1);
-  ball.dy = -4;
-  paddle.x = (canvas.width - paddle.width) / 2;
-}
-
-function resetGame() {
-  score = 0;
-  lives = 3;
-  createBricks();
-  resetBall();
-  gameState = "playing";
-}
-
-function allBricksDestroyed() {
-  for (let r = 0; r < brickConfig.rows; r++) {
-    for (let c = 0; c < brickConfig.cols; c++) {
-      if (bricks[r][c].alive) return false;
-    }
-  }
-  return true;
-}
-
-// --- Particles ---
-const particles = [];
-
-function spawnParticles(x, y, color) {
-  for (let i = 0; i < 8; i++) {
-    particles.push({
-      x,
-      y,
-      dx: (Math.random() - 0.5) * 6,
-      dy: (Math.random() - 0.5) * 6,
-      radius: Math.random() * 3 + 1,
-      color,
-      life: 1,
-    });
-  }
-}
-
-function updateParticles() {
-  for (let i = particles.length - 1; i >= 0; i--) {
-    const p = particles[i];
-    p.x += p.dx;
-    p.y += p.dy;
-    p.life -= 0.03;
-    if (p.life <= 0) particles.splice(i, 1);
-  }
-}
-
-function drawParticles() {
-  for (const p of particles) {
-    ctx.globalAlpha = p.life;
-    ctx.fillStyle = p.color;
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  ctx.globalAlpha = 1;
-}
-
-// --- Ball Trail ---
-const trail = [];
-
-function updateTrail() {
-  trail.push({ x: ball.x, y: ball.y });
-  if (trail.length > 10) trail.shift();
-}
-
-function drawTrail() {
-  for (let i = 0; i < trail.length; i++) {
-    const alpha = (i / trail.length) * 0.3;
-    ctx.globalAlpha = alpha;
-    ctx.fillStyle = ball.color;
-    ctx.beginPath();
-    ctx.arc(trail[i].x, trail[i].y, ball.radius * (i / trail.length), 0, Math.PI * 2);
-    ctx.fill();
-  }
-  ctx.globalAlpha = 1;
-}
-
-// --- Input ---
-const keys = {};
-let mouseX = paddle.x + paddle.width / 2;
-
-document.addEventListener("keydown", (e) => {
-  keys[e.key] = true;
-  if (e.key === " " || e.key === "Enter") {
-    if (gameState === "start" || gameState === "gameover" || gameState === "win") {
-      resetGame();
-    }
-  }
-});
-document.addEventListener("keyup", (e) => (keys[e.key] = false));
-let mouseActive = false;
-canvas.addEventListener("mouseenter", () => (mouseActive = true));
-canvas.addEventListener("mouseleave", () => (mouseActive = false));
-canvas.addEventListener("mousemove", (e) => {
-  mouseActive = true;
-  const rect = canvas.getBoundingClientRect();
-  mouseX = e.clientX - rect.left;
-});
-canvas.addEventListener("click", () => {
-  if (gameState === "start" || gameState === "gameover" || gameState === "win") {
-    resetGame();
-  }
-});
-
-function updatePaddle() {
-  if (keys["ArrowLeft"] || keys["a"]) paddle.x -= paddle.speed;
-  if (keys["ArrowRight"] || keys["d"]) paddle.x += paddle.speed;
-
-  // Mouse control — only when mouse is on the canvas
-  if (mouseActive) {
-    paddle.x = mouseX - paddle.width / 2;
+  function shadeColor(hex, amt) {
+    const clamp = (v) => Math.max(0, Math.min(255, v));
+    const r = clamp(parseInt(hex.slice(1, 3), 16) + amt);
+    const g = clamp(parseInt(hex.slice(3, 5), 16) + amt);
+    const b = clamp(parseInt(hex.slice(5, 7), 16) + amt);
+    return `rgb(${r},${g},${b})`;
   }
 
-  // Clamp to canvas
-  paddle.x = Math.max(0, Math.min(canvas.width - paddle.width, paddle.x));
-}
+  // =========================================================================
+  // Input
+  // =========================================================================
 
-function updateBall() {
-  ball.x += ball.dx;
-  ball.y += ball.dy;
+  const input = {
+    keys: {},
+    mouseX: CONFIG.canvas.width / 2,
+    mouseActive: false,
 
-  // Wall collisions (left/right) with position clamping
-  if (ball.x - ball.radius <= 0) {
-    ball.dx = Math.abs(ball.dx);
-    ball.x = ball.radius;
-  } else if (ball.x + ball.radius >= canvas.width) {
-    ball.dx = -Math.abs(ball.dx);
-    ball.x = canvas.width - ball.radius;
-  }
-  // Ceiling
-  if (ball.y - ball.radius <= 0) {
-    ball.dy = Math.abs(ball.dy);
-    ball.y = ball.radius;
-  }
-  // Floor - lose a life
-  if (ball.y + ball.radius >= canvas.height) {
-    lives--;
-    if (lives <= 0) {
-      gameState = "gameover";
-    } else {
-      resetBall();
-    }
-    return;
-  }
+    init() {
+      document.addEventListener("keydown", (e) => {
+        this.keys[e.key] = true;
+        if (e.key === " " || e.key === "Enter") game.handleStart();
+      });
+      document.addEventListener("keyup", (e) => (this.keys[e.key] = false));
+      canvas.addEventListener("mouseenter", () => (this.mouseActive = true));
+      canvas.addEventListener("mouseleave", () => (this.mouseActive = false));
+      canvas.addEventListener("mousemove", (e) => {
+        this.mouseActive = true;
+        this.mouseX = e.clientX - canvas.getBoundingClientRect().left;
+      });
+      canvas.addEventListener("click", () => game.handleStart());
+    },
 
-  // Paddle collision
-  if (
-    ball.dy > 0 &&
-    ball.y + ball.radius >= paddle.y &&
-    ball.y + ball.radius <= paddle.y + paddle.height &&
-    ball.x >= paddle.x &&
-    ball.x <= paddle.x + paddle.width
-  ) {
-    ball.y = paddle.y - ball.radius; // Prevent sticking inside paddle
-    const hitPos = (ball.x - paddle.x) / paddle.width;
-    ball.dx = 6 * (hitPos - 0.5);
-    ball.dy = -Math.abs(ball.dy);
-    normalizeBallSpeed();
-  }
+    isLeft() {
+      return this.keys["ArrowLeft"] || this.keys["a"];
+    },
+    isRight() {
+      return this.keys["ArrowRight"] || this.keys["d"];
+    },
+  };
 
-  // Brick collisions
-  for (let r = 0; r < brickConfig.rows; r++) {
-    for (let c = 0; c < brickConfig.cols; c++) {
-      const b = bricks[r][c];
-      if (!b.alive) continue;
-      if (
-        ball.x + ball.radius > b.x &&
-        ball.x - ball.radius < b.x + brickConfig.width &&
-        ball.y + ball.radius > b.y &&
-        ball.y - ball.radius < b.y + brickConfig.height
-      ) {
-        b.alive = false;
-        // Determine which face was hit
-        const overlapLeft = ball.x + ball.radius - b.x;
-        const overlapRight = b.x + brickConfig.width - (ball.x - ball.radius);
-        const overlapTop = ball.y + ball.radius - b.y;
-        const overlapBottom = b.y + brickConfig.height - (ball.y - ball.radius);
-        const minOverlapX = Math.min(overlapLeft, overlapRight);
-        const minOverlapY = Math.min(overlapTop, overlapBottom);
-        if (minOverlapX < minOverlapY) {
-          ball.dx = -ball.dx;
-        } else {
-          ball.dy = -ball.dy;
-        }
-        score += b.points;
-        spawnParticles(b.x + brickConfig.width / 2, b.y + brickConfig.height / 2, b.color);
-        if (allBricksDestroyed()) {
-          gameState = "win";
-        }
+  // =========================================================================
+  // Particle system
+  // =========================================================================
+
+  const particleSystem = {
+    items: [],
+
+    spawn(x, y, color) {
+      const cfg = CONFIG.particles;
+      for (let i = 0; i < cfg.count; i++) {
+        this.items.push({
+          x,
+          y,
+          dx: (Math.random() - 0.5) * cfg.speed,
+          dy: (Math.random() - 0.5) * cfg.speed,
+          radius: Math.random() * cfg.maxRadius + cfg.minRadius,
+          color,
+          life: 1,
+        });
+      }
+    },
+
+    update() {
+      for (let i = this.items.length - 1; i >= 0; i--) {
+        const p = this.items[i];
+        p.x += p.dx;
+        p.y += p.dy;
+        p.life -= CONFIG.particles.decay;
+        if (p.life <= 0) this.items.splice(i, 1);
+      }
+    },
+
+    draw() {
+      for (const p of this.items) {
+        ctx.globalAlpha = p.life;
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    },
+  };
+
+  // =========================================================================
+  // Ball trail
+  // =========================================================================
+
+  const trail = {
+    points: [],
+
+    update(x, y) {
+      this.points.push({ x, y });
+      if (this.points.length > CONFIG.trail.maxLength) this.points.shift();
+    },
+
+    draw() {
+      const len = this.points.length;
+      for (let i = 0; i < len; i++) {
+        ctx.globalAlpha = (i / len) * CONFIG.trail.maxAlpha;
+        ctx.fillStyle = CONFIG.ball.color;
+        ctx.beginPath();
+        ctx.arc(this.points[i].x, this.points[i].y, CONFIG.ball.radius * (i / len), 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    },
+
+    clear() {
+      this.points.length = 0;
+    },
+  };
+
+  // =========================================================================
+  // Game objects
+  // =========================================================================
+
+  const paddle = {
+    x: 0,
+    y: CONFIG.canvas.height - CONFIG.paddle.bottomOffset,
+
+    reset() {
+      this.x = (CONFIG.canvas.width - CONFIG.paddle.width) / 2;
+    },
+
+    update() {
+      if (input.isLeft()) this.x -= CONFIG.paddle.speed;
+      if (input.isRight()) this.x += CONFIG.paddle.speed;
+      if (input.mouseActive) this.x = input.mouseX - CONFIG.paddle.width / 2;
+      this.x = Math.max(0, Math.min(CONFIG.canvas.width - CONFIG.paddle.width, this.x));
+    },
+
+    draw() {
+      ctx.shadowColor = CONFIG.paddle.color;
+      ctx.shadowBlur = 15;
+      ctx.fillStyle = CONFIG.paddle.color;
+      ctx.beginPath();
+      ctx.roundRect(this.x, this.y, CONFIG.paddle.width, CONFIG.paddle.height, 6);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    },
+  };
+
+  const ball = {
+    x: 0,
+    y: 0,
+    dx: 0,
+    dy: 0,
+
+    reset() {
+      this.x = CONFIG.canvas.width / 2;
+      this.y = paddle.y - CONFIG.ball.radius - 4;
+      this.dx = CONFIG.ball.initialDx * (Math.random() > 0.5 ? 1 : -1);
+      this.dy = CONFIG.ball.initialDy;
+      trail.clear();
+    },
+
+    normalizeSpeed() {
+      const speed = Math.sqrt(this.dx ** 2 + this.dy ** 2);
+      if (speed === 0) return;
+      const scale = BALL_SPEED / speed;
+      this.dx *= scale;
+      this.dy *= scale;
+    },
+
+    update() {
+      this.x += this.dx;
+      this.y += this.dy;
+
+      // Wall collisions with position clamping
+      if (this.x - CONFIG.ball.radius <= 0) {
+        this.dx = Math.abs(this.dx);
+        this.x = CONFIG.ball.radius;
+      } else if (this.x + CONFIG.ball.radius >= CONFIG.canvas.width) {
+        this.dx = -Math.abs(this.dx);
+        this.x = CONFIG.canvas.width - CONFIG.ball.radius;
+      }
+      if (this.y - CONFIG.ball.radius <= 0) {
+        this.dy = Math.abs(this.dy);
+        this.y = CONFIG.ball.radius;
+      }
+
+      // Floor — lose a life
+      if (this.y + CONFIG.ball.radius >= CONFIG.canvas.height) {
+        game.loseLife();
         return;
       }
-    }
-  }
-}
 
-// --- Drawing ---
-function drawPaddle() {
-  ctx.shadowColor = paddle.color;
-  ctx.shadowBlur = 15;
-  ctx.fillStyle = paddle.color;
-  ctx.beginPath();
-  ctx.roundRect(paddle.x, paddle.y, paddle.width, paddle.height, 6);
-  ctx.fill();
-  ctx.shadowBlur = 0;
-}
+      this.collidePaddle();
+      this.collideBricks();
+    },
 
-function drawBricks() {
-  for (let r = 0; r < brickConfig.rows; r++) {
-    for (let c = 0; c < brickConfig.cols; c++) {
-      const b = bricks[r][c];
-      if (!b.alive) continue;
-      const grad = ctx.createLinearGradient(b.x, b.y, b.x, b.y + brickConfig.height);
-      grad.addColorStop(0, b.color);
-      grad.addColorStop(1, shadeColor(b.color, -30));
-      ctx.fillStyle = grad;
+    collidePaddle() {
+      if (
+        this.dy > 0 &&
+        this.y + CONFIG.ball.radius >= paddle.y &&
+        this.y + CONFIG.ball.radius <= paddle.y + CONFIG.paddle.height &&
+        this.x >= paddle.x &&
+        this.x <= paddle.x + CONFIG.paddle.width
+      ) {
+        this.y = paddle.y - CONFIG.ball.radius;
+        const hitPos = (this.x - paddle.x) / CONFIG.paddle.width;
+        this.dx = CONFIG.ball.maxDeflection * (hitPos - 0.5);
+        this.dy = -Math.abs(this.dy);
+        this.normalizeSpeed();
+      }
+    },
+
+    collideBricks() {
+      const cfg = CONFIG.bricks;
+      for (let r = 0; r < cfg.rows; r++) {
+        for (let c = 0; c < cfg.cols; c++) {
+          const b = brickGrid.bricks[r][c];
+          if (!b.alive) continue;
+          if (
+            this.x + CONFIG.ball.radius > b.x &&
+            this.x - CONFIG.ball.radius < b.x + cfg.width &&
+            this.y + CONFIG.ball.radius > b.y &&
+            this.y - CONFIG.ball.radius < b.y + cfg.height
+          ) {
+            b.alive = false;
+
+            // Determine collision face
+            const overlapX = Math.min(
+              this.x + CONFIG.ball.radius - b.x,
+              b.x + cfg.width - (this.x - CONFIG.ball.radius),
+            );
+            const overlapY = Math.min(
+              this.y + CONFIG.ball.radius - b.y,
+              b.y + cfg.height - (this.y - CONFIG.ball.radius),
+            );
+            if (overlapX < overlapY) {
+              this.dx = -this.dx;
+            } else {
+              this.dy = -this.dy;
+            }
+
+            game.addScore(b.points);
+            particleSystem.spawn(b.x + cfg.width / 2, b.y + cfg.height / 2, b.color);
+
+            if (brickGrid.allDestroyed()) game.state = "win";
+            return;
+          }
+        }
+      }
+    },
+
+    draw() {
+      ctx.fillStyle = CONFIG.ball.color;
       ctx.beginPath();
-      ctx.roundRect(b.x, b.y, brickConfig.width, brickConfig.height, 4);
+      ctx.arc(this.x, this.y, CONFIG.ball.radius, 0, Math.PI * 2);
       ctx.fill();
-      // Top highlight
-      ctx.fillStyle = "rgba(255,255,255,0.15)";
-      ctx.beginPath();
-      ctx.roundRect(b.x + 2, b.y + 2, brickConfig.width - 4, brickConfig.height / 2 - 2, 2);
-      ctx.fill();
-    }
-  }
-}
+    },
+  };
 
-function shadeColor(hex, amt) {
-  let r = parseInt(hex.slice(1, 3), 16) + amt;
-  let g = parseInt(hex.slice(3, 5), 16) + amt;
-  let b = parseInt(hex.slice(5, 7), 16) + amt;
-  r = Math.max(0, Math.min(255, r));
-  g = Math.max(0, Math.min(255, g));
-  b = Math.max(0, Math.min(255, b));
-  return `rgb(${r},${g},${b})`;
-}
+  const brickGrid = {
+    bricks: [],
 
-function drawBall() {
-  ctx.fillStyle = ball.color;
-  ctx.beginPath();
-  ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
-  ctx.fill();
-}
+    create() {
+      const cfg = CONFIG.bricks;
+      this.bricks = [];
+      for (let r = 0; r < cfg.rows; r++) {
+        this.bricks[r] = [];
+        for (let c = 0; c < cfg.cols; c++) {
+          this.bricks[r][c] = {
+            x: cfg.offsetLeft + c * (cfg.width + cfg.padding),
+            y: cfg.offsetTop + r * (cfg.height + cfg.padding),
+            alive: true,
+            color: cfg.colors[r],
+            points: cfg.points[r],
+          };
+        }
+      }
+    },
 
-function drawHUD() {
-  ctx.fillStyle = "#f5f5f5";
-  ctx.font = "16px 'Segoe UI', sans-serif";
-  ctx.textAlign = "left";
-  ctx.fillText(`Score: ${score}`, 15, 25);
-  ctx.textAlign = "right";
-  ctx.fillText(`Lives: ${lives}`, canvas.width - 15, 25);
-}
+    allDestroyed() {
+      for (let r = 0; r < CONFIG.bricks.rows; r++) {
+        for (let c = 0; c < CONFIG.bricks.cols; c++) {
+          if (this.bricks[r][c].alive) return false;
+        }
+      }
+      return true;
+    },
 
-function drawOverlay(title, subtitle) {
-  ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.fillStyle = "#e94560";
-  ctx.font = "bold 48px 'Segoe UI', sans-serif";
-  ctx.textAlign = "center";
-  ctx.fillText(title, canvas.width / 2, canvas.height / 2 - 20);
-  ctx.fillStyle = "#f5f5f5";
-  ctx.font = "18px 'Segoe UI', sans-serif";
-  ctx.fillText(subtitle, canvas.width / 2, canvas.height / 2 + 25);
-}
+    draw() {
+      const cfg = CONFIG.bricks;
+      for (let r = 0; r < cfg.rows; r++) {
+        for (let c = 0; c < cfg.cols; c++) {
+          const b = this.bricks[r][c];
+          if (!b.alive) continue;
 
-// --- Game Loop ---
-function draw() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+          const grad = ctx.createLinearGradient(b.x, b.y, b.x, b.y + cfg.height);
+          grad.addColorStop(0, b.color);
+          grad.addColorStop(1, shadeColor(b.color, -30));
+          ctx.fillStyle = grad;
+          ctx.beginPath();
+          ctx.roundRect(b.x, b.y, cfg.width, cfg.height, 4);
+          ctx.fill();
 
-  updateParticles();
+          // Top highlight
+          ctx.fillStyle = "rgba(255,255,255,0.15)";
+          ctx.beginPath();
+          ctx.roundRect(b.x + 2, b.y + 2, cfg.width - 4, cfg.height / 2 - 2, 2);
+          ctx.fill();
+        }
+      }
+    },
+  };
 
-  if (gameState === "playing") {
-    updatePaddle();
-    updateBall();
-    updateTrail();
-    drawBricks();
-    drawTrail();
-    drawPaddle();
-    drawBall();
-    drawParticles();
-    drawHUD();
-  } else if (gameState === "start") {
-    drawBricks();
-    drawPaddle();
-    drawBall();
-    drawParticles();
-    drawOverlay("BRICK BREAKER", "Click or press Space to start");
-  } else if (gameState === "gameover") {
-    drawBricks();
-    drawPaddle();
-    drawParticles();
-    drawOverlay("GAME OVER", `Final Score: ${score} — Click or press Space to retry`);
-  } else if (gameState === "win") {
-    drawParticles();
-    drawOverlay("YOU WIN!", `Score: ${score} — Click or press Space to play again`);
+  // =========================================================================
+  // HUD / Overlays
+  // =========================================================================
+
+  function drawHUD() {
+    ctx.fillStyle = "#f5f5f5";
+    ctx.font = `16px ${CONFIG.font}`;
+    ctx.textAlign = "left";
+    ctx.fillText(`Score: ${game.score}`, 15, 25);
+    ctx.textAlign = "right";
+    ctx.fillText(`Lives: ${game.lives}`, CONFIG.canvas.width - 15, 25);
   }
 
-  requestAnimationFrame(draw);
-}
+  function drawOverlay(title, subtitle) {
+    ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+    ctx.fillRect(0, 0, CONFIG.canvas.width, CONFIG.canvas.height);
+    ctx.fillStyle = "#e94560";
+    ctx.font = `bold 48px ${CONFIG.font}`;
+    ctx.textAlign = "center";
+    ctx.fillText(title, CONFIG.canvas.width / 2, CONFIG.canvas.height / 2 - 20);
+    ctx.fillStyle = "#f5f5f5";
+    ctx.font = `18px ${CONFIG.font}`;
+    ctx.fillText(subtitle, CONFIG.canvas.width / 2, CONFIG.canvas.height / 2 + 25);
+  }
 
-draw();
+  // =========================================================================
+  // Game controller
+  // =========================================================================
+
+  const game = {
+    state: "start",
+    score: 0,
+    lives: CONFIG.lives,
+
+    handleStart() {
+      if (this.state !== "playing") this.reset();
+    },
+
+    reset() {
+      this.score = 0;
+      this.lives = CONFIG.lives;
+      this.state = "playing";
+      brickGrid.create();
+      paddle.reset();
+      ball.reset();
+    },
+
+    loseLife() {
+      this.lives--;
+      if (this.lives <= 0) {
+        this.state = "gameover";
+      } else {
+        paddle.reset();
+        ball.reset();
+      }
+    },
+
+    addScore(points) {
+      this.score += points;
+    },
+
+    // --- Main loop -----------------------------------------------------------
+
+    update() {
+      particleSystem.update();
+      if (this.state !== "playing") return;
+      paddle.update();
+      ball.update();
+      trail.update(ball.x, ball.y);
+    },
+
+    render() {
+      ctx.clearRect(0, 0, CONFIG.canvas.width, CONFIG.canvas.height);
+
+      if (this.state === "playing") {
+        brickGrid.draw();
+        trail.draw();
+        paddle.draw();
+        ball.draw();
+        particleSystem.draw();
+        drawHUD();
+      } else if (this.state === "start") {
+        brickGrid.draw();
+        paddle.draw();
+        ball.draw();
+        particleSystem.draw();
+        drawOverlay("BRICK BREAKER", "Click or press Space to start");
+      } else if (this.state === "gameover") {
+        brickGrid.draw();
+        paddle.draw();
+        particleSystem.draw();
+        drawOverlay("GAME OVER", `Final Score: ${this.score} \u2014 Click or press Space to retry`);
+      } else if (this.state === "win") {
+        particleSystem.draw();
+        drawOverlay("YOU WIN!", `Score: ${this.score} \u2014 Click or press Space to play again`);
+      }
+    },
+
+    loop() {
+      this.update();
+      this.render();
+      requestAnimationFrame(() => this.loop());
+    },
+
+    start() {
+      brickGrid.create();
+      paddle.reset();
+      ball.reset();
+      input.init();
+      this.loop();
+    },
+  };
+
+  // =========================================================================
+  // Boot
+  // =========================================================================
+
+  game.start();
+})();
